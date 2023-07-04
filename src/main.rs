@@ -6,8 +6,8 @@ const N_THREADS: usize = 16;
 
 #[derive(Clone, Copy, Debug)]
 struct CompTrimple {
-    counter: i128,
-    thesqrt: i128,
+    counter: u128,
+    thesqrt: u128,
     subcounter: i64,
     subthreshhold: i64,
     is_prime: Option<bool>,
@@ -26,7 +26,7 @@ impl CompTrimple {
     }
 }
 
-fn is_prime(arc: Arc<RwLock<Vec<i128>>>, cr_candidate: Receiver<CompTrimple>, cs_result: Sender<CompTrimple>, _id: usize) -> Result<(),String> {
+fn is_prime(arc: Arc<RwLock<Vec<u128>>>, cr_candidate: Receiver<CompTrimple>, cs_result: Sender<CompTrimple>, _id: usize) -> Result<(),String> {
     loop {
         let mut c = cr_candidate.recv().unwrap();
         {        
@@ -54,12 +54,12 @@ fn is_prime(arc: Arc<RwLock<Vec<i128>>>, cr_candidate: Receiver<CompTrimple>, cs
 }
  
 fn main() {
-    let mut vec: Vec<i128> = Vec::new();
-    let mut n_primes: i128 = 4;
-    vec.push(2_i128);
-    vec.push(3_i128);
-    vec.push(5_i128);
-    vec.push(7_i128);
+    let mut vec: Vec<u128> = Vec::new();
+    let mut n_primes: u128 = 4;
+    vec.push(2_u128);
+    vec.push(3_u128);
+    vec.push(5_u128);
+    vec.push(7_u128);
     let mut c: CompTrimple = CompTrimple {
         counter: 9,
         thesqrt: 3,
@@ -79,11 +79,12 @@ fn main() {
         let csr = cs_result.clone();
         children[id] = Some(thread::spawn(move|| is_prime(v, crc, csr, id)));
     }
-    while n_primes < 50000 {
+    while n_primes < 5000000 {
         for _ in 0..N_THREADS {
             cs_candidate.send(c).unwrap();
             c.iterate();
         }
+        let mut more_primes: Vec<u128> = Vec::new();
         for _ in 0..N_THREADS {
             //println!("waiting for result...");
             let d = cr_result.recv().unwrap();
@@ -91,13 +92,15 @@ fn main() {
             match d.is_prime {
                 Some(true) => {
                     n_primes += 1;
-                    let mut v = arc.write().unwrap();
-                    v.push(d.counter);  
-                    v.sort()
+                    more_primes.push(d.counter);  
                 },
                 _ => {}
             }
+            
         }
+        more_primes.sort();
+        let mut primes = arc.write().unwrap();
+        primes.append(&mut more_primes);
     }
     c.is_done = true;
     for _ in 0..N_THREADS {

@@ -1,8 +1,8 @@
-use std::thread;
+use crossbeam::channel::{unbounded, Receiver, Sender};
 use std::sync::{Arc, RwLock};
-use crossbeam::channel::{unbounded, Sender, Receiver};
+use std::thread;
 
-const N_THREADS: usize = 16;
+const N_THREADS: usize = 32;
 
 #[derive(Clone, Copy, Debug)]
 struct CompTrimple {
@@ -26,10 +26,15 @@ impl CompTrimple {
     }
 }
 
-fn is_prime(arc: Arc<RwLock<Vec<u128>>>, cr_candidate: Receiver<CompTrimple>, cs_result: Sender<CompTrimple>, _id: usize) -> Result<(),String> {
+fn is_prime(
+    arc: Arc<RwLock<Vec<u128>>>,
+    cr_candidate: Receiver<CompTrimple>,
+    cs_result: Sender<CompTrimple>,
+    _id: usize,
+) -> Result<(), String> {
     loop {
         let mut c = cr_candidate.recv().unwrap();
-        {        
+        {
             let vec_ro = arc.read().unwrap();
             if c.is_done {
                 break;
@@ -52,15 +57,22 @@ fn is_prime(arc: Arc<RwLock<Vec<u128>>>, cr_candidate: Receiver<CompTrimple>, cs
     }
     Ok(())
 }
- 
-fn main() {
+
+fn init() -> (
+    Arc<RwLock<Vec<u128>>>,
+    Sender<CompTrimple>,
+    Receiver<CompTrimple>,
+    CompTrimple,
+    u128,
+    Vec<thread::JoinHandle<Result<(), String>>>,
+) {
     let mut vec: Vec<u128> = Vec::new();
-    let mut n_primes: u128 = 4;
+    let n_primes: u128 = 4;
     vec.push(2_u128);
     vec.push(3_u128);
     vec.push(5_u128);
     vec.push(7_u128);
-    let mut c: CompTrimple = CompTrimple {
+    let c: CompTrimple = CompTrimple {
         counter: 9,
         thesqrt: 3,
         subcounter: 3,
@@ -71,14 +83,18 @@ fn main() {
     let arc = Arc::new(RwLock::new(vec));
     let (cs_candidate, cr_candidate): (Sender<CompTrimple>, Receiver<CompTrimple>) = unbounded();
     let (cs_result, cr_result): (Sender<CompTrimple>, Receiver<CompTrimple>) = unbounded();
-    
-    let mut children: [Option<thread::JoinHandle<Result<(),String>>>; N_THREADS] = Default::default();
+    let mut children: Vec<thread::JoinHandle<Result<(), String>>> = Vec::new();
     for id in 0..N_THREADS {
         let v = arc.clone();
         let crc = cr_candidate.clone();
         let csr = cs_result.clone();
-        children[id] = Some(thread::spawn(move|| is_prime(v, crc, csr, id)));
+        children.push(thread::spawn(move || is_prime(v, crc, csr, id)));
     }
+    (arc, cs_candidate, cr_result, c, n_primes, children)
+}
+
+fn main() {
+    let (arc, cs_candidate, cr_result, mut c, mut n_primes, children) = init();
     while n_primes < 5000000 {
         for _ in 0..N_THREADS {
             cs_candidate.send(c).unwrap();
@@ -92,11 +108,10 @@ fn main() {
             match d.is_prime {
                 Some(true) => {
                     n_primes += 1;
-                    more_primes.push(d.counter);  
-                },
+                    more_primes.push(d.counter);
+                }
                 _ => {}
             }
-            
         }
         more_primes.sort();
         let mut primes = arc.write().unwrap();
@@ -107,13 +122,8 @@ fn main() {
         cs_candidate.send(c).unwrap();
     }
     for child in children {
-        match child {
-            Some(child) => {
-                let _ = child.join().unwrap();
-            },
-            None => println!("none"),
-        }
+        let _ = child.join().unwrap();
     }
     //println!("{} numberes checked", N_THREADS);
-    println!("{:?}", arc);
+    //println!("{:?}", arc);
 }

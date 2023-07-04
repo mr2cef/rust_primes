@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 
 const N_THREADS: usize = 32;
+const N_PRIMES: u128 = 5_000_000;
 
 #[derive(Clone, Copy, Debug)]
 struct CompTrimple {
@@ -66,7 +67,7 @@ fn init() -> (
     u128,
     Vec<thread::JoinHandle<Result<(), String>>>,
 ) {
-    let mut vec: Vec<u128> = Vec::new();
+    let mut vec: Vec<u128> = Vec::with_capacity(N_PRIMES as usize);
     let n_primes: u128 = 4;
     vec.push(2_u128);
     vec.push(3_u128);
@@ -95,7 +96,7 @@ fn init() -> (
 
 fn main() {
     let (arc, cs_candidate, cr_result, mut c, mut n_primes, children) = init();
-    while n_primes < 5000000 {
+    while n_primes < N_PRIMES {
         for _ in 0..N_THREADS {
             cs_candidate.send(c).unwrap();
             c.iterate();
